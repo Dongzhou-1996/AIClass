@@ -12,7 +12,6 @@ import tqdm
 from IPython.display import clear_output
 
 
-# Generator Code
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
@@ -70,8 +69,6 @@ class Discriminator(nn.Module):
     def forward(self, input):
         return self.main(input)
 
-
-# custom weights initialization called on ``netG`` and ``netD``
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
@@ -82,18 +79,17 @@ def weights_init(m):
 
 
 def generate_and_display_images(generator, fixed_noise, epoch, examples=10, dim=(1, 10), figsize=(10, 1)):
-    generated_images = generator(fixed_noise).permute(0, 2, 3, 1).detach().cpu()  # 生成图像
-    generated_images = 0.5 * generated_images + 0.5  # 将像素值归一化到 [0, 1]
+    generated_images = generator(fixed_noise).permute(0, 2, 3, 1).detach().cpu()
+    generated_images = 0.5 * generated_images + 0.5
 
     clear_output(wait=True)
     plt.figure(figsize=figsize)
     for i in range(examples):
         plt.subplot(dim[0], dim[1], i + 1)
-        plt.imshow(generated_images[i])  # 显示生成的图像
+        plt.imshow(generated_images[i])
         plt.axis('off')
     plt.tight_layout()
     plt.title(f'Epoch: {epoch}')
-    # plt.show()
     path = 'run/results/{:06d}.png'.format(epoch)
     if not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
@@ -107,15 +103,15 @@ if __name__ == '__main__':
     manualSeed = 42
     random.seed(manualSeed)
     torch.manual_seed(manualSeed)
-    torch.use_deterministic_algorithms(True)  # Needed for reproducible results
+    torch.use_deterministic_algorithms(True)
 
     dataset_root = "data/celeba"
     num_epochs = 10
     lr = 2e-4
     batch_size = 128
     image_size = 64
-    nc = 3  # Number of channels in the training images. For color images this is 3
-    nz = 100  # Size of z latent vector (i.e. size of generator input)
+    nc = 3  # Number of channels
+    nz = 100  # Size of z latent vector
     ngf = 64  # Size of feature maps in generator
     ndf = 64  # Size of feature maps in discriminator
     beta1 = 0.5   # Beta1 hyperparameter for Adam optimizers
@@ -155,58 +151,45 @@ if __name__ == '__main__':
     optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
 
     # Lists to keep track of progress
-    img_list = []
     G_losses = []
     D_losses = []
     iters = 0
 
-    # For each epoch
     for epoch in range(num_epochs):
         generate_and_display_images(netG, fixed_noise, epoch)
-        # For each batch in the dataloader
         train_bar = tqdm.tqdm(dataloader, desc='[Train]: {}/{}'.format(epoch, num_epochs))
         for i, data in enumerate(train_bar):
-            ############################
-            # (1) Update Discriminator network: maximize log(D(x)) + log(1 - D(G(z)))
-            ###########################
+            #################################################
+            # Update Discriminator network:
+            # maximize log(D(x)) + log(1 - D(G(z)))
+            #################################################
             netD.zero_grad()
-            real_cpu = data[0].to(device)
-            b_size = real_cpu.size(0)
+            real_img = data[0].to(device)
+            b_size = real_img.size(0)
             label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
-            # Forward pass real batch through Discriminator
-            output = netD(real_cpu).view(-1)
-            # Calculate loss on all-real batch
+            output = netD(real_img).view(-1)
             errD_real = criterion(output, label)
-            # Calculate gradients for Discriminator in backward pass
             errD_real.backward()
             D_x = output.mean().item()
 
-            # Generate batch of latent vectors
             noise = torch.randn(b_size, nz, 1, 1, device=device)
-            # Generate fake image batch with Generator
-            fake = netG(noise)
+            fake_img = netG(noise)
             label.fill_(fake_label)
-            # Classify all fake batch with Discriminator
-            output = netD(fake.detach()).view(-1)
-            # Calculate Discriminator's loss on the all-fake batch
+            output = netD(fake_img.detach()).view(-1)
             errD_fake = criterion(output, label)
-            # Calculate the gradients for this batch, accumulated (summed) with previous gradients
             errD_fake.backward()
             D_G_z1 = output.mean().item()
-            # Compute error of Discriminator as sum over the fake and the real batches
             errD = errD_real + errD_fake
             optimizerD.step()  # Update 
 
-            ############################
-            # (2) Update Generator network: maximize log(D(G(z)))
-            ###########################
+            #################################################
+            # Update Generator network:
+            # maximize log(D(G(z)))
+            #################################################
             netG.zero_grad()
             label.fill_(real_label)  # fake labels are real for generator cost
-            # Since we just updated Discriminator, perform another forward pass of all-fake batch through Discriminator
-            output = netD(fake).view(-1)
-            # Calculate Generator's loss based on this output
+            output = netD(fake_img).view(-1)
             errG = criterion(output, label)
-            # Calculate gradients for Generator
             errG.backward()
             D_G_z2 = output.mean().item()
             optimizerG.step()  # Update Generator
@@ -222,13 +205,6 @@ if __name__ == '__main__':
             # Save Losses for plotting later
             G_losses.append(errG.item())
             D_losses.append(errD.item())
-
-            # Check how the generator is doing by saving G's output on fixed_noise
-            # if (iters % 500 == 0) or ((epoch == num_epochs - 1) and (i == len(dataloader) - 1)):
-            # with torch.no_grad():
-            #     fake = netG(fixed_noise).detach().cpu()
-            # img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
-
             iters += 1
 
     plt.figure(figsize=(10, 5))
@@ -238,6 +214,5 @@ if __name__ == '__main__':
     plt.xlabel("iterations")
     plt.ylabel("Loss")
     plt.legend()
-    # plt.show()
     plt.savefig('run/losses.png', dpi=150)
 
